@@ -8,7 +8,7 @@ from torch.autograd import Function
 import __main__
 
 config = {
-    "num_labels": 5,
+    "num_labels": 6,
     "hidden_dropout_prob": 0.15,
     "hidden_size": 768,
     "max_length": 512,
@@ -22,34 +22,28 @@ label_dict ={0: 'Injection',
              4: 'Fake_the_Source_of_Data',
              5: 'Normal'}
 
-class GradientReversalFn(Function):
-    @staticmethod
-    def forward(ctx, x, alpha):
-        ctx.alpha = alpha
-        
-        return x.view_as(x)
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        output = grad_output.neg() * ctx.alpha
-
-        return output, None
-    
 class DomainAdaptationModel(nn.Module):
     def __init__(self):
         super(DomainAdaptationModel, self).__init__()
-        
+
         num_labels = config["num_labels"]
-        self.bert = AutoModel.from_pretrained('jackaduma/SecBERT')
+        self.bert = AutoModel.from_pretrained('jackaduma/SecBERT') # model that we will use
         self.dropout = nn.Dropout(config["hidden_dropout_prob"])
-        self.request_classifier = nn.Sequential(
-            nn.Linear(config["hidden_size"], num_labels),
+
+        self.prj = nn.Linear(config["hidden_size"], config["hidden_size"]//2);
+
+        self.attack_classifier = nn.Sequential(
+            nn.Linear(config["hidden_size"]//2, num_labels),
             nn.LogSoftmax(dim=1),
         )
-        self.domain_classifier = nn.Sequential(
-            nn.Linear(config["hidden_size"], 2),
-            nn.LogSoftmax(dim=1),
-        )
+
+
+#       Freeze bert layer
+        modules = [self.bert.embeddings, self.bert.encoder.layer[:2]] #Replace value by what you want
+        for module in modules:
+            for param in module.parameters():
+                param.requires_grad = False
 
 
     def forward(
@@ -58,7 +52,7 @@ class DomainAdaptationModel(nn.Module):
           attention_mask=None,
           token_type_ids=None,
           labels=None,
-          grl_lambda = 1.0, 
+#           grl_lambda = 1.0,
           ):
 
         outputs = self.bert(
@@ -68,16 +62,14 @@ class DomainAdaptationModel(nn.Module):
             )
 
 #         pooled_output = outputs[1] # For bert-base-uncase
-        pooled_output = outputs.pooler_output 
+        pooled_output = outputs.pooler_output
         pooled_output = self.dropout(pooled_output)
 
+        pooled_output_prj = self.prj(pooled_output)
+#         pooled_output_prj2 = self.prj2(pooled_output_prj)
+        attack_pred = self.attack_classifier(pooled_output_prj)
 
-        reversed_pooled_output = GradientReversalFn.apply(pooled_output, grl_lambda)
-
-        request_pred = self.request_classifier(pooled_output)
-        domain_pred = self.domain_classifier(reversed_pooled_output)
-
-        return request_pred.to(device), domain_pred.to(device)
+        return attack_pred.to(device), pooled_output_prj
 
 class ReviewDataset(Dataset):
     def __init__(self, df):
@@ -91,7 +83,8 @@ class ReviewDataset(Dataset):
           'Manipulation': 1,
           'Scanning for Vulnerable Software': 2,
           'HTTP abusion': 3,
-          'Fake the Source of Data': 4}
+          'Fake the Source of Data': 4,
+          'Normal': 5}
         label = request_dict[request]
         encoded_input = self.tokenizer.encode_plus(
                 review,
@@ -126,14 +119,15 @@ class ReviewDataset(Dataset):
         return self.df.shape[0]
 
 class UnknownAttackClassificationModel():
-    def _init_(self):
+    def __init__(self):
+        self.model = DomainAdaptationModel()
         print("loaded model")
 
     # init model
     def loadModelInit(self):
         setattr(__main__, "DomainAdaptationModel", DomainAdaptationModel)
-        model_path = "/home/anhnmt2/Documents/CodeInjection/WebAttackDeployment/training_unknown_classification_module/model_weight/epoch_model_0model.pt"
-        self.model = torch.load(model_path)
+        model_path = "/home/realhugn/PlayGround/ModSec-DAN-deployment/epoch_15model.bin"
+        self.model.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
         self.tokenizer = AutoTokenizer.from_pretrained('jackaduma/SecBERT')
 
     # Predict

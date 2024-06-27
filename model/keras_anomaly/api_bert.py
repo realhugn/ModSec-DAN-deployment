@@ -8,16 +8,16 @@ myHttpPredict.loadModelInit()
 data= "GET /log"
 predict = myHttpPredict.predict(data)
 print(predict)
-# if __name__ == '__main__':
-# 	while 1 > 0:
-# 		keys = r.lpop("myRequestQueue")
-# 		# print(keys)
-# 		if keys is None:
-# 			continue
-# 		data = str(r.get(keys))
-# 		data = data.replace("'", "")
-# 		# print(data)
-# 		data = data.replace("$", "/")
-# 		data = data.replace(">", " ")
-# 		predict = myHttpPredict.predict(data)
-# 		r.set(keys.decode("utf-8"), predict)
+if __name__ == '__main__':
+	while 1 > 0:
+		keys = r.lpop("myRequestQueue")
+		# print(keys)
+		if keys is None:
+			continue
+		data = str(r.get(keys))
+		data = data.replace("'", "")
+		# print(data)
+		data = data.replace("$", "/")
+		data = data.replace(">", " ")
+		predict = myHttpPredict.predict(data)
+		r.set(keys.decode("utf-8"), predict)

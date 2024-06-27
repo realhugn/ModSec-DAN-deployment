@@ -2,7 +2,7 @@
 echo "### Install Modsecurity"
 echo
 
-cd ModSecurity && ./autogen.sh && ./configure && make && make install
+cd modsecurity && ./autogen.sh && ./configure && make && make install
 cp /usr/local/modsecurity/lib/mod_security2.so /usr/lib/apache2/modules/
 cd ..
 
